@@ -40,7 +40,6 @@ class AbacusCommand(sublime_plugin.TextCommand):
                 indent  = max_indent
             else:
                 indent  = candidate["adjusted_indent"]
-
             sep_width   = len(candidate["separator"])
             right_col   = candidate["right_col"].strip()
             if use_tab_indents:
@@ -56,6 +55,8 @@ class AbacusCommand(sublime_plugin.TextCommand):
                                                     separator   = candidate["separator"] )
             elif candidate["gravity"] == "right":
                 gutter_width = max_left_col_width + max_indent - len(left_col) - len(candidate["separator"])
+                if use_tab_indents:
+                    gutter_width = gutter_width - ((self.tab_width - 1) * candidate["original"].count("\t"))
                 #Push the separator ONE separator's width over the tab boundary
                 left_col    = rg_aligner.substitute(    left_col            = left_col,
                                                         gutter              = " " * gutter_width,
@@ -75,11 +76,14 @@ class AbacusCommand(sublime_plugin.TextCommand):
         #Scroll and muck with the selection
         if candidates:
             self.view.sel().clear()
-            for region in [self.region_from_line_number(changed["line"]) for changed in candidates]:
-                start_of_right_col  = region.begin() + max_indent + max_left_col_width
-                insertion_point     = sublime.Region(start_of_right_col, start_of_right_col)
-                self.view.sel().add(insertion_point)
-                #self.view.show_at_center(insertion_point)
+            for changed in candidates:
+                for region in [self.region_from_line_number(changed["line"])]:
+                    start_of_right_col  = region.begin() + max_indent + max_left_col_width
+                    if use_tab_indents and candidate["gravity"] == "right":
+                        start_of_right_col = start_of_right_col - (changed["replacement"].count("\t") * (self.tab_width - 1))
+                    insertion_point     = sublime.Region(start_of_right_col, start_of_right_col)
+                    self.view.sel().add(insertion_point)
+
         else:
             sublime.status_message('Abacus - no alignment token found on selected line(s)')
 
@@ -168,6 +172,8 @@ class AbacusCommand(sublime_plugin.TextCommand):
         candidates.extend(new_candidates)
 
     def calc_left_col_width(self, candidates):
+        use_tab_indents     = sublime.load_settings("Abacus.sublime-settings").get("use_tab_indents")
+
         """
             Given a list of lines we've already matched against
             one or more separators, loop through them all to
@@ -175,7 +181,6 @@ class AbacusCommand(sublime_plugin.TextCommand):
             possible column width that will accomodate them all
             when aligned to a tab stop boundary.
         """
-        use_tab_indents     = sublime.load_settings("Abacus.sublime-settings").get("use_tab_indents")
         max_width           = 0
         max_indent          = 0
         max_sep_width       = 0

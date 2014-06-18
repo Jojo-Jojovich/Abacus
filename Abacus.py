@@ -65,14 +65,17 @@ class AbacusCommand(sublime_plugin.TextCommand):
                 #Most sane people will want a space between the operator and the value.
                 right_col   = " %s" % right_col
             #Snap the left side together
-            left_col                    = left_col.ljust(max_indent + max_left_col_width)
+            if use_tab_indents and candidate["gravity"] == "right":
+                left_col                    = left_col.ljust(max_indent + max_left_col_width - ((self.tab_width - 1) * candidate["original"].count("\t")))
+            else:
+                left_col                    = left_col.ljust(max_indent + max_left_col_width)
+
             candidate["replacement"]    = "%s%s\n" % (left_col, right_col)
 
             #Replace each line in its entirety
             full_line = self.region_from_line_number(candidate["line"])
             #sys.stdout.write(candidate["replacement"])
             self.view.replace(edit, full_line, candidate["replacement"])
-
         #Scroll and muck with the selection
         if candidates:
             self.view.sel().clear()
@@ -190,13 +193,14 @@ class AbacusCommand(sublime_plugin.TextCommand):
             max_sep_width   = max([len(candidate["separator"]), max_sep_width])
             max_width       = max([len(candidate["left_col"].rstrip()), max_width])
 
+            if use_tab_indents:
+                if candidate["gravity"] == "left":
+                    max_indent = max_indent // self.tab_width
+
         max_width += max_sep_width
 
         #Bump up to the next multiple of tab_width
         max_width = self.snap_to_next_boundary(max_width, self.tab_width)
-
-        if use_tab_indents:
-            max_indent = max_indent // self.tab_width
 
         return max_indent, max_width
 

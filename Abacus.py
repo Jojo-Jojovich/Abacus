@@ -56,7 +56,7 @@ class AbacusCommand(sublime_plugin.TextCommand):
             elif candidate["gravity"] == "right":
                 gutter_width = max_left_col_width + max_indent - len(left_col) - len(candidate["separator"])
                 if use_tab_indents:
-                    gutter_width = gutter_width - ((self.tab_width - 1) * candidate["original"].count("\t"))
+                    gutter_width = gutter_width - ((self.tab_width - 1) * (candidate["adjusted_indent"] // self.tab_width))
                 #Push the separator ONE separator's width over the tab boundary
                 left_col    = rg_aligner.substitute(    left_col            = left_col,
                                                         gutter              = " " * gutter_width,
@@ -65,13 +65,14 @@ class AbacusCommand(sublime_plugin.TextCommand):
                 #Most sane people will want a space between the operator and the value.
                 right_col   = " %s" % right_col
             #Snap the left side together
-            if use_tab_indents and candidate["gravity"] == "right":
-                left_col                    = left_col.ljust(max_indent + max_left_col_width - ((self.tab_width - 1) * candidate["original"].count("\t")))
+            if use_tab_indents:
+                if candidate["gravity"] == "right":
+                    left_col                    = left_col.ljust(max_indent + max_left_col_width - ((self.tab_width - 1) * (candidate["adjusted_indent"] // self.tab_width)))
+                elif candidate["gravity"] == "left":
+                    left_col                    = left_col.ljust(max_indent + max_left_col_width + (max_indent - (candidate["adjusted_indent"] // self.tab_width)))
             else:
                 left_col                    = left_col.ljust(max_indent + max_left_col_width)
-
             candidate["replacement"]    = "%s%s\n" % (left_col, right_col)
-
             #Replace each line in its entirety
             full_line = self.region_from_line_number(candidate["line"])
             #sys.stdout.write(candidate["replacement"])
@@ -82,8 +83,10 @@ class AbacusCommand(sublime_plugin.TextCommand):
             for changed in candidates:
                 for region in [self.region_from_line_number(changed["line"])]:
                     start_of_right_col  = region.begin() + max_indent + max_left_col_width
-                    if use_tab_indents and candidate["gravity"] == "right":
+                    if use_tab_indents and changed["gravity"] == "right":
                         start_of_right_col = start_of_right_col - (changed["replacement"].count("\t") * (self.tab_width - 1))
+                    if use_tab_indents and changed["gravity"] == "left":
+                        start_of_right_col = start_of_right_col + (max_indent - changed["replacement"].count("\t"))
                     insertion_point     = sublime.Region(start_of_right_col, start_of_right_col)
                     self.view.sel().add(insertion_point)
 
@@ -189,16 +192,14 @@ class AbacusCommand(sublime_plugin.TextCommand):
         max_sep_width       = 0
 
         for candidate in candidates:
-            max_indent      = max([candidate["adjusted_indent"], max_indent])
-            max_sep_width   = max([len(candidate["separator"]), max_sep_width])
-            max_width       = max([len(candidate["left_col"].rstrip()), max_width])
-
-            if use_tab_indents:
-                if candidate["gravity"] == "left":
-                    max_indent = max_indent // self.tab_width
+            if use_tab_indents and candidate["gravity"] == "left":
+                    max_indent      = max([candidate["adjusted_indent"] // self.tab_width, max_indent])
+            else:
+                max_indent          = max([candidate["adjusted_indent"], max_indent])
+            max_sep_width           = max([len(candidate["separator"]), max_sep_width])
+            max_width               = max([len(candidate["left_col"].rstrip()), max_width])
 
         max_width += max_sep_width
-
         #Bump up to the next multiple of tab_width
         max_width = self.snap_to_next_boundary(max_width, self.tab_width)
 
